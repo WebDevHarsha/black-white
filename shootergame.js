@@ -1,225 +1,406 @@
-// Game state
-let gameActive = false;
-let score = 0;
-let health = 100;
-let ammo = 30;
-let targets = [];
-let lastShot = 0;
-let reloading = false;
-let videoStream = null;
+var importThree = import('https://cdn.skypack.dev/three@0.132.2');
 
-// Canvas setup
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const video = document.getElementById('videoElement');
-const startButton = document.getElementById('startButton');
-const gameOverScreen = document.getElementById('gameOver');
-const flash = document.querySelector('.flash');
-const restartButton = document.getElementById('restartButton');
-const quitButton = document.getElementById('quitButton');
+// Game state variables
+var score = 0;
+var timeRemaining = 30;
+var gameActive = false;  // Changed to false initially for countdown
+var highScore = localStorage.getItem('highScore') || 0;
+var timerInterval;
+var scene, camera, renderer, light;
+var targets = [];
+var bullets = [];
+var THREE;
+var streak = 0;
+var multiplier = 1;
+var lastHitTime = 0;
+var countdownActive = true;
 
-// Resize canvas to match window size
-function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
-
-// Initialize camera
-async function initializeCamera() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        video.srcObject = stream;
-        videoStream = stream;
-    } catch (err) {
-        console.error("Error accessing camera:", err);
-        alert("Camera access is required to play this game!");
+// Sound elements
+var sounds = {
+    shoot: document.getElementById('shootSound'),
+    gameOver: document.getElementById('gameOverSound'),
+    newHighScore: document.getElementById('highScoreSound'),
+    countdown: document.getElementById('countdownSound')
+};
+function createBlastEffect(position) {
+    var blastGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    var blastMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    
+    var particles = [];
+    for (var i = 0; i < 30; i++) {
+        var particle = new THREE.Mesh(blastGeometry, blastMaterial);
+        particle.position.copy(position);
+        
+        // Give random velocity for the blast
+        particle.velocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2
+        );
+        
+        scene.add(particle);
+        particles.push(particle);
     }
-}
+    
+    // Animate the particles
+    function animateParticles() {
+        for (var i = particles.length - 1; i >= 0; i--) {
+            particles[i].position.add(particles[i].velocity);
+            particles[i].velocity.multiplyScalar(0.95); // Gradually slow down
 
-// Stop camera and clear game state
-function stopGame() {
-    gameActive = false;
-    if (videoStream) {
-        videoStream.getTracks().forEach(track => track.stop());
-    }
-    video.srcObject = null;
-    targets = [];
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    gameOverScreen.style.display = 'none';
-    window.close(); // Note: This may not work in all browsers due to security restrictions
-}
-
-// Reset game state
-function resetGame() {
-    gameActive = true;
-    score = 0;
-    health = 100;
-    ammo = 30;
-    targets = [];
-    lastShot = 0;
-    reloading = false;
-    gameOverScreen.style.display = 'none';
-    updateHUD();
-    gameLoop();
-}
-
-// Target class
-class Target {
-    constructor() {
-        this.size = Math.random() * 50 + 50;
-        this.x = Math.random() * (canvas.width - this.size);
-        this.y = Math.random() * (canvas.height - this.size);
-        this.speedX = (Math.random() - 0.5) * 2;
-        this.speedY = (Math.random() - 0.5) * 2;
-        this.health = 1;
-        this.color = `hsl(${Math.random() * 360}, 70%, 50%)`;
-        this.lastShot = 0;
-        this.points = Math.floor(100 / this.size * 10);
-    }
-
-    update() {
-        this.x += this.speedX;
-        this.y += this.speedY;
-
-        if (this.x <= 0 || this.x + this.size >= canvas.width) this.speedX *= -1;
-        if (this.y <= 0 || this.y + this.size >= canvas.height) this.speedY *= -1;
-
-        if (Math.random() < 0.01) {
-            this.speedX = (Math.random() - 0.5) * 2;
-            this.speedY = (Math.random() - 0.5) * 2;
+            if (particles[i].velocity.length() < 0.01) {
+                scene.remove(particles[i]);
+                particles.splice(i, 1);
+            }
         }
 
-        if (Date.now() - this.lastShot > 2000 && Math.random() < 0.01) {
-            this.shoot();
-            this.lastShot = Date.now();
+        if (particles.length > 0) {
+            requestAnimationFrame(animateParticles);
         }
     }
 
-    draw() {
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x + this.size/2, this.y + this.size/2, this.size/2, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    shoot() {
-        if (health > 0) {
-            health -= 5;
-            updateHUD();
-            checkGameOver();
-        }
-    }
+    animateParticles();
 }
 
-// Game functions
-function spawnTarget() {
-    if (targets.length < 8 && Math.random() < 0.05) {
-        targets.push(new Target());
-    }
-}
+// Initialize game elements
+function initGame() {
+    importThree.then(function(threeModule) {
+        THREE = threeModule;
+        // Scene setup
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 0);
+        document.body.appendChild(renderer.domElement);
 
-function updateTargets() {
-    for (let i = targets.length - 1; i >= 0; i--) {
-        targets[i].update();
-        if (targets[i].health <= 0) {
-            score += targets[i].points;
-            targets.splice(i, 1);
-            updateHUD();
-        }
-    }
-}
+        // Lighting
+        light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(10, 10, 10).normalize();
+        scene.add(light);
 
-function drawTargets() {
-    targets.forEach(target => target.draw());
-}
-
-function shoot(e) {
-    if (!gameActive || reloading || ammo <= 0) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    if (Date.now() - lastShot < 100) return;
-    lastShot = Date.now();
-
-    flash.style.opacity = '1';
-    setTimeout(() => flash.style.opacity = '0', 50);
-
-    ammo--;
-    updateHUD();
-
-    targets.forEach(target => {
-        const dx = x - (target.x + target.size/2);
-        const dy = y - (target.y + target.size/2);
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance < target.size/2) {
-            target.health = 0;
-            ctx.fillStyle = 'white';
-            ctx.beginPath();
-            ctx.arc(x, y, 5, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        // Start the full game initialization
+        startGameElements();
     });
-
-    if (ammo <= 0) reload();
 }
 
-function reload() {
-    if (reloading) return;
-    reloading = true;
-    setTimeout(() => {
-        ammo = 30;
-        reloading = false;
-        updateHUD();
-    }, 2000);
+// Initialize camera access
+function initCamera() {
+    var video = document.getElementById('myVideo');
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(function(cameraStream) {
+            video.srcObject = cameraStream;
+        })
+        .catch(function(error) {
+            console.error('Error accessing camera:', error.message);
+        });
 }
 
-function updateHUD() {
-    document.getElementById('score').textContent = `Score: ${score}`;
-    document.getElementById('health').textContent = `Health: ${health}`;
-    document.getElementById('ammo').textContent = reloading ? 'Reloading...' : `Ammo: ${ammo}`;
+// Create UI elements
+function createUIElements() {
+    // Score display
+    var scoreDisplay = document.createElement('div');
+    scoreDisplay.id = 'scoreDisplay';
+    scoreDisplay.style.position = 'absolute';
+    scoreDisplay.style.top = '20px';
+    scoreDisplay.style.left = '20px';
+    scoreDisplay.style.color = 'white';
+    scoreDisplay.style.fontSize = '24px';
+    scoreDisplay.style.fontFamily = 'Arial';
+    scoreDisplay.style.zIndex = '5';
+    document.body.appendChild(scoreDisplay);
+
+    // Timer display
+    var timerDisplay = document.createElement('div');
+    timerDisplay.id = 'timerDisplay';
+    timerDisplay.style.position = 'absolute';
+    timerDisplay.style.top = '20px';
+    timerDisplay.style.right = '20px';
+    timerDisplay.style.color = 'white';
+    timerDisplay.style.fontSize = '24px';
+    timerDisplay.style.fontFamily = 'Arial';
+    timerDisplay.style.zIndex = '5';
+    document.body.appendChild(timerDisplay);
+
+    // Multiplier display
+    var multiplierDisplay = document.createElement('div');
+    multiplierDisplay.id = 'multiplierDisplay';
+    multiplierDisplay.style.position = 'absolute';
+    multiplierDisplay.style.top = '60px';
+    multiplierDisplay.style.left = '20px';
+    multiplierDisplay.style.color = '#ffff00';
+    multiplierDisplay.style.fontSize = '20px';
+    multiplierDisplay.style.fontFamily = 'Arial';
+    multiplierDisplay.style.zIndex = '5';
+    document.body.appendChild(multiplierDisplay);
+
+    // Countdown display
+    var countdownDisplay = document.createElement('div');
+    countdownDisplay.id = 'countdownDisplay';
+    countdownDisplay.style.position = 'absolute';
+    countdownDisplay.style.top = '50%';
+    countdownDisplay.style.left = '50%';
+    countdownDisplay.style.transform = 'translate(-50%, -50%)';
+    countdownDisplay.style.color = 'white';
+    countdownDisplay.style.fontSize = '72px';
+    countdownDisplay.style.fontFamily = 'Arial';
+    countdownDisplay.style.zIndex = '6';
+    document.body.appendChild(countdownDisplay);
 }
 
-function checkGameOver() {
-    if (health <= 0) {
-        gameActive = false;
-        document.getElementById('finalScore').textContent = `Final Score: ${score}`;
-        gameOverScreen.style.display = 'block';
+// Create target
+function createTarget() {
+    var targetGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+    var targetMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    var target = new THREE.Mesh(targetGeometry, targetMaterial);
+    target.position.x = Math.random() * 10 - 5;
+    target.position.y = Math.random() * 5 - 2.5;
+    target.position.z = -10 - Math.random() * 10;
+    scene.add(target);
+    targets.push(target);
+}
+
+// Initialize targets
+function initTargets() {
+    for (var i = 0; i < 5; i++) {
+        createTarget();
     }
 }
 
-// Game loop
-function gameLoop() {
-    if (!gameActive) return;
+// Handle shooting
+function initShooting() {
+    var bulletGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    var bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    spawnTarget();
-    updateTargets();
-    drawTargets();
-
-    requestAnimationFrame(gameLoop);
+    window.addEventListener('click', function(event) {
+        if (!gameActive) return;
+        
+        // Play shooting sound
+        sounds.shoot.currentTime = 0;
+        sounds.shoot.play().catch(e => console.log('Error playing sound:', e));
+        
+        var bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+        bullet.position.set(camera.position.x, camera.position.y, camera.position.z);
+        bullet.velocity = new THREE.Vector3(0, 0, -1).applyEuler(camera.rotation);
+        scene.add(bullet);
+        bullets.push(bullet);
+    }, { passive: true });
 }
 
-// Event listeners
-canvas.addEventListener('click', shoot);
-document.addEventListener('keypress', (e) => {
-    if (e.key === 'r') reload();
-});
+// Initialize gyroscope
+function initGyroscope() {
+    if ('Gyroscope' in window) {
+        var gyroscope = new Gyroscope({ frequency: 60 });
 
-startButton.addEventListener('click', () => {
-    gameActive = true;
-    startButton.style.display = 'none';
-    gameLoop();
-});
+        gyroscope.addEventListener('reading', function() {
+            if (!gameActive) return;
+            
+            var sensitivity = 0.02;
+            var maxRotationSpeed = 0.1;
 
-restartButton.addEventListener('click', resetGame);
-quitButton.addEventListener('click', stopGame);
+            camera.rotation.x += Math.min(gyroscope.x * sensitivity, maxRotationSpeed);
+            camera.rotation.y += Math.min(gyroscope.y * sensitivity, maxRotationSpeed);
+            camera.rotation.z += Math.min(gyroscope.z * sensitivity, maxRotationSpeed);
+        });
 
-// Initialize game
-initializeCamera();
-updateHUD();
+        gyroscope.start();
+    } else {
+        alert('Gyroscope not supported on this device/browser.');
+    }
+}
+
+// Start countdown
+function startCountdown() {
+    let count = 3;
+  sounds.countdown.currentTime = 0;
+            sounds.countdown.play().catch(e => console.log('Error playing countdown:', e));
+    const countdownDisplay = document.getElementById('countdownDisplay');
+    countdownDisplay.style.display = 'block';
+    
+    function updateCountdown() {
+        if (count > 0) {
+            countdownDisplay.textContent = count;
+            
+            count--;
+            setTimeout(updateCountdown, 1000);
+        } else {
+            countdownDisplay.textContent = 'GO!';
+            setTimeout(() => {
+                countdownDisplay.style.display = 'none';
+                gameActive = true;
+                countdownActive = false;
+                timerInterval = setInterval(updateTimer, 1000);
+            }, 1000);
+        }
+    }
+    
+    updateCountdown();
+}
+
+// Update multiplier
+function updateMultiplier() {
+    const currentTime = Date.now();
+    if (currentTime - lastHitTime < 1500) { // 1.5 seconds window for streak
+        streak++;
+        if (streak > 2) {
+            multiplier = Math.min(4, Math.floor(streak / 2)); // Cap multiplier at 4x
+        }
+    } else {
+        streak = 1;
+        multiplier = 1;
+    }
+    lastHitTime = currentTime;
+    
+    // Update multiplier display
+    const multiplierDisplay = document.getElementById('multiplierDisplay');
+    if (multiplier > 1) {
+        multiplierDisplay.textContent = `${multiplier}x Multiplier! (${streak} streak)`;
+        multiplierDisplay.style.display = 'block';
+    } else {
+        multiplierDisplay.style.display = 'none';
+    }
+}
+
+// Update timer
+function updateTimer() {
+    if (!gameActive) return;
+    
+    timeRemaining--;
+    document.getElementById('timerDisplay').textContent = 'Time: ' + timeRemaining + 's';
+    
+    if (timeRemaining <= 0) {
+        gameActive = false;
+        endGame();
+    }
+}
+
+// End game
+function endGame() {
+    clearInterval(timerInterval);
+
+   
+    
+    // Update high score and play sound if new high score
+    if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('highScore', highScore);
+        // Play new high score sound
+        sounds.newHighScore.play().catch(e => console.log('Error playing sound:', e));
+    }else{
+	   sounds.gameOver.play().catch(e => console.log('Error playing sound:', e));
+	}
+    
+    // Show game over container
+    var gameOverContainer = document.getElementById('gameOverContainer');
+    gameOverContainer.style.display = 'block';
+    
+    // Update final score and high score
+    document.getElementById('finalScore').textContent = 'Final Score: ' + score;
+    document.getElementById('highScore').textContent = 'High Score: ' + highScore;
+}
+
+// Restart game
+function restartGame() {
+    // Reset game state
+    score = 0;
+    timeRemaining = 30;
+    gameActive = false;
+    streak = 0;
+    multiplier = 1;
+    countdownActive = true;
+    
+    // Clear existing targets and bullets
+    for (var i = targets.length - 1; i >= 0; i--) {
+        scene.remove(targets[i]);
+    }
+    for (var i = bullets.length - 1; i >= 0; i--) {
+        scene.remove(bullets[i]);
+    }
+    targets = [];
+    bullets = [];
+    
+    // Reset UI
+    document.getElementById('gameOverContainer').style.display = 'none';
+    document.getElementById('scoreDisplay').textContent = 'Score: 0';
+    document.getElementById('timerDisplay').textContent = 'Time: 10s';
+    document.getElementById('multiplierDisplay').style.display = 'none';
+    
+    // Initialize new targets
+    initTargets();
+    
+    // Start countdown
+    startCountdown();
+}
+
+// Handle window resize
+function handleResize() {
+    window.addEventListener('resize', function() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+    }, { passive: true });
+}
+
+// Animation loop
+function animate() {
+    requestAnimationFrame(animate);
+
+    document.getElementById('scoreDisplay').textContent = 'Score: ' + score;
+
+    if (gameActive) {
+        // Update bullets
+        for (var i = bullets.length - 1; i >= 0; i--) {
+            bullets[i].position.add(bullets[i].velocity);
+            if (bullets[i].position.z < -50) {
+                scene.remove(bullets[i]);
+                bullets.splice(i, 1);
+            }
+        }
+
+        // Check collisions
+        for (var i = bullets.length - 1; i >= 0; i--) {
+    for (var j = targets.length - 1; j >= 0; j--) {
+        var distance = bullets[i].position.distanceTo(targets[j].position);
+        if (distance < 0.5) {
+            // Create a blast effect at the target's position
+            createBlastEffect(targets[j].position);
+
+            scene.remove(targets[j]);
+            targets.splice(j, 1);
+            scene.remove(bullets[i]);
+            bullets.splice(i, 1);
+
+            updateMultiplier();
+            score += 100 * multiplier;
+            createTarget();
+            break;
+        }
+    }
+}
+
+    }
+
+    renderer.render(scene, camera);
+}
+
+// Initialize all game elements
+function startGameElements() {
+    createUIElements();
+    initCamera();
+    initTargets();
+    initShooting();
+    initGyroscope();
+    handleResize();
+    
+    // Start countdown instead of immediately starting the game
+    startCountdown();
+    
+    // Start animation loop
+    animate();
+    
+    // Add restart button listener
+    document.getElementById('restartButton').addEventListener('click', restartGame);
+}
+
+// Start the game when the page loads
+initGame();
