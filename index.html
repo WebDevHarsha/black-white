@@ -3,140 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Shooting Game</title>
+    <title>Three.js Shooting Game with Camera Background</title>
     <style>
-        * {
+        html, body {
             margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            overflow: hidden;
-            background: #000;
-            font-family: Arial, sans-serif;
-        }
-        #gameContainer {
+            height: 100%;
+            overflow: auto;
             position: relative;
-            width: 100vw;
-            height: 100vh;
         }
-        #videoElement {
-            position: absolute;
+        video {
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
-            z-index: 1;
-        }
-        #gameCanvas {
-            position: absolute;
-            width: 100%;
-            height: 100%;
             z-index: 2;
-            cursor: crosshair;
         }
-        .hud {
-            position: fixed;
-            padding: 20px;
-            color: #fff;
-            font-size: 24px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            z-index: 3;
-        }
-        #score {
+        canvas {
+            position: absolute;
             top: 0;
             left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            z-index: 3;
         }
-        #health {
-            top: 0;
-            right: 0;
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            font-size: 30px;
+            color: red;
+            font-weight: bold;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 4;
         }
-        #ammo {
-            bottom: 20px;
-            right: 20px;
-        }
-        #gameOver {
-            position: fixed;
+        #gameOverContainer {
+            display: none;
+            position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.8);
-            color: #fff;
+            text-align: center;
+            color: white;
+            z-index: 6;
+            background-color: rgba(0, 0, 0, 0.8);
             padding: 20px;
             border-radius: 10px;
-            text-align: center;
-            display: none;
-            z-index: 4;
         }
-        .game-button {
-            padding: 15px 30px;
+        #restartButton {
+            margin-top: 20px;
+            padding: 10px 20px;
             font-size: 20px;
+            background-color: #ff4444;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            margin: 10px;
             transition: background-color 0.3s;
         }
-        #startButton {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: #4CAF50;
-            z-index: 5;
+        #restartButton:hover {
+            background-color: #ff6666;
         }
-        #restartButton {
-            background: #4CAF50;
+        #finalScore {
+            font-size: 48px;
+            margin: 10px 0;
         }
-        #quitButton {
-            background: #f44336;
+        #highScore {
+            font-size: 24px;
+            margin: 10px 0;
+            color: #ffff00;
         }
-        .game-button:hover {
-            filter: brightness(1.1);
+        #multiplierDisplay {
+    display: none;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 10px 20px; /* Increased padding for a bigger display */
+    border-radius: 5px;
+    font-size: 36px; /* Increased font size */
+    animation: pulse 1s infinite;
+}
+
+        #countdownDisplay {
+            display: none;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            animation: scale 0.5s ease-in-out;
         }
-        .crosshair {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 20px;
-            height: 20px;
-            border: 2px solid #fff;
-            border-radius: 50%;
-            pointer-events: none;
-            z-index: 3;
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
         }
-        .flash {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.1);
-            z-index: 2;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.1s;
+        @keyframes scale {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+        /* Add audio elements with display none */
+        audio {
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div id="gameContainer">
-        <video id="videoElement" autoplay playsinline></video>
-        <canvas id="gameCanvas"></canvas>
-        <div class="crosshair"></div>
-        <div class="flash"></div>
-        <div class="hud" id="score">Score: 0</div>
-        <div class="hud" id="health">Health: 100</div>
-        <div class="hud" id="ammo">Ammo: 30</div>
-        <button id="startButton" class="game-button">Start Game</button>
-        <div id="gameOver">
-            <h2>Game Over!</h2>
-            <p id="finalScore">Score: 0</p>
-            <button id="restartButton" class="game-button">Restart</button>
-            <button id="quitButton" class="game-button">Quit</button>
-        </div>
+    <video id="myVideo" autoplay playsinline muted></video>
+    <div id="crosshair">+</div>
+    
+    <!-- Add audio elements -->
+    <audio id="shootSound" src="https://raw.githubusercontent.com/Ayush021-Dev/game-sounds/main/sound-effects-single-gun-shot-247124%20(mp3cut.net).mp3" preload="auto"></audio>
+    <audio id="gameOverSound" src="https://raw.githubusercontent.com/Ayush021-Dev/game-sounds/main/game-over-31-179699.mp3" preload="auto"></audio>
+    <audio id="highScoreSound" src="https://raw.githubusercontent.com/Ayush021-Dev/game-sounds/main/WhatsApp%20Audio%202024-11-10%20at%2021%20(mp3cut.net).mp3" preload="auto"></audio>
+    <audio id="countdownSound" src="https://raw.githubusercontent.com/Ayush021-Dev/game-sounds/main/countdown-122700%20(mp3cut.net).mp3" preload="auto"></audio>
+    
+    <div id="gameOverContainer">
+        <h1>GAME OVER</h1>
+        <div id="finalScore"></div>
+        <div id="highScore"></div>
+        <button id="restartButton">Play Again</button>
     </div>
-    <script src="game.js"></script>
+    
+    <script type="module" src="game.js"></script>
 </body>
 </html>
