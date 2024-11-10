@@ -1,8 +1,8 @@
 # black-white
 AR Shooting Game
 Overview
-This is a web-based augmented reality (AR) shooting game where players use their device's camera and gyroscope to aim and shoot at virtual targets made using Scribble Pad JS. Compete to achieve the highest score within a 30-second game session, with opportunities to earn score multipliers and challenge your own high scores.
-Made by Team Mavericks during Scribble-Pad Hackathon.
+This is a web-based augmented reality (AR) shooting game where players use their device's camera and gyroscope to aim and shoot at virtual targets made using <b>Scribbler JS</b>. Compete to achieve the highest score within a 30-second game session, with opportunities to earn score multipliers and challenge your own high scores.
+Made by <b>Team Mavericks</b> during Scribble-Pad Hackathon.
 
 How to Play
 Open the game in a compatible web browser and grant camera access.
