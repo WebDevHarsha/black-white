@@ -10,19 +10,16 @@
             padding: 0;
             box-sizing: border-box;
         }
-
         body {
             overflow: hidden;
             background: #000;
             font-family: Arial, sans-serif;
         }
-
         #gameContainer {
             position: relative;
             width: 100vw;
             height: 100vh;
         }
-
         #videoElement {
             position: absolute;
             width: 100%;
@@ -30,7 +27,6 @@
             object-fit: cover;
             z-index: 1;
         }
-
         #gameCanvas {
             position: absolute;
             width: 100%;
@@ -38,7 +34,6 @@
             z-index: 2;
             cursor: crosshair;
         }
-
         .hud {
             position: fixed;
             padding: 20px;
@@ -47,22 +42,18 @@
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
             z-index: 3;
         }
-
         #score {
             top: 0;
             left: 0;
         }
-
         #health {
             top: 0;
             right: 0;
         }
-
         #ammo {
             bottom: 20px;
             right: 20px;
         }
-
         #gameOver {
             position: fixed;
             top: 50%;
@@ -76,26 +67,33 @@
             display: none;
             z-index: 4;
         }
-
+        .game-button {
+            padding: 15px 30px;
+            font-size: 20px;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            transition: background-color 0.3s;
+        }
         #startButton {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            padding: 15px 30px;
-            font-size: 20px;
             background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
             z-index: 5;
         }
-
-        #startButton:hover {
-            background: #45a049;
+        #restartButton {
+            background: #4CAF50;
         }
-
+        #quitButton {
+            background: #f44336;
+        }
+        .game-button:hover {
+            filter: brightness(1.1);
+        }
         .crosshair {
             position: fixed;
             top: 50%;
@@ -108,7 +106,6 @@
             pointer-events: none;
             z-index: 3;
         }
-
         .flash {
             position: fixed;
             top: 0;
@@ -132,10 +129,12 @@
         <div class="hud" id="score">Score: 0</div>
         <div class="hud" id="health">Health: 100</div>
         <div class="hud" id="ammo">Ammo: 30</div>
-        <button id="startButton">Start Game</button>
+        <button id="startButton" class="game-button">Start Game</button>
         <div id="gameOver">
             <h2>Game Over!</h2>
             <p id="finalScore">Score: 0</p>
+            <button id="restartButton" class="game-button">Restart</button>
+            <button id="quitButton" class="game-button">Quit</button>
         </div>
     </div>
     <script src="game.js"></script>
