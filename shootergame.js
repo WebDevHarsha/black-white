@@ -6,6 +6,7 @@ let ammo = 30;
 let targets = [];
 let lastShot = 0;
 let reloading = false;
+let videoStream = null;
 
 // Canvas setup
 const canvas = document.getElementById('gameCanvas');
@@ -14,9 +15,8 @@ const video = document.getElementById('videoElement');
 const startButton = document.getElementById('startButton');
 const gameOverScreen = document.getElementById('gameOver');
 const flash = document.querySelector('.flash');
-
-// Track high score
-let highScore = localStorage.getItem('highScore') || 0;
+const restartButton = document.getElementById('restartButton');
+const quitButton = document.getElementById('quitButton');
 
 // Resize canvas to match window size
 function resizeCanvas() {
@@ -31,10 +31,38 @@ async function initializeCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         video.srcObject = stream;
+        videoStream = stream;
     } catch (err) {
         console.error("Error accessing camera:", err);
         alert("Camera access is required to play this game!");
     }
+}
+
+// Stop camera and clear game state
+function stopGame() {
+    gameActive = false;
+    if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+    }
+    video.srcObject = null;
+    targets = [];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    gameOverScreen.style.display = 'none';
+    window.close(); // Note: This may not work in all browsers due to security restrictions
+}
+
+// Reset game state
+function resetGame() {
+    gameActive = true;
+    score = 0;
+    health = 100;
+    ammo = 30;
+    targets = [];
+    lastShot = 0;
+    reloading = false;
+    gameOverScreen.style.display = 'none';
+    updateHUD();
+    gameLoop();
 }
 
 // Target class
@@ -156,51 +184,11 @@ function updateHUD() {
     document.getElementById('ammo').textContent = reloading ? 'Reloading...' : `Ammo: ${ammo}`;
 }
 
-function resetGame() {
-    gameActive = true;
-    score = 0;
-    health = 100;
-    ammo = 30;
-    targets = [];
-    lastShot = 0;
-    reloading = false;
-    gameOverScreen.style.display = 'none';
-    updateHUD();
-    gameLoop();
-}
-
 function checkGameOver() {
     if (health <= 0) {
         gameActive = false;
-        
-        // Update high score
-        if (score > highScore) {
-            highScore = score;
-            localStorage.setItem('highScore', highScore);
-        }
-        
-        // Update game over screen
-        const finalScoreText = document.getElementById('finalScore');
-        finalScoreText.innerHTML = `
-            <div style="font-size: 32px; margin-bottom: 20px;">Game Over!</div>
-            <div style="font-size: 24px; margin-bottom: 10px">Final Score: ${score}</div>
-            <div style="font-size: 20px; margin-bottom: 20px">High Score: ${highScore}</div>
-            <button onclick="resetGame()" style="
-                padding: 15px 30px;
-                font-size: 20px;
-                background: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-                margin-top: 20px;
-            ">Play Again</button>
-        `;
-        
-        gameOverScreen.style.display = 'flex';
-        gameOverScreen.style.flexDirection = 'column';
-        gameOverScreen.style.alignItems = 'center';
-        gameOverScreen.style.justifyContent = 'center';
+        document.getElementById('finalScore').textContent = `Final Score: ${score}`;
+        gameOverScreen.style.display = 'block';
     }
 }
 
@@ -228,6 +216,9 @@ startButton.addEventListener('click', () => {
     startButton.style.display = 'none';
     gameLoop();
 });
+
+restartButton.addEventListener('click', resetGame);
+quitButton.addEventListener('click', stopGame);
 
 // Initialize game
 initializeCamera();
